@@ -84,5 +84,55 @@ class ApplyServiceTest {
         assertThat(count).isEqualTo(100);
     }
 
+    // mysql의 성능 문제를 해결하기 위해서 카프카 사용 (redis 동일하게 value 지우기)
+    @Test
+    public void 카프카를_이용한_여러명_응모() throws InterruptedException {
+        // given
+        int threadCount = 1000;
+        ExecutorService executorService = Executors.newFixedThreadPool(32);
+        CountDownLatch latch = new CountDownLatch(threadCount);
+
+        // when
+        for (int i = 0; i < threadCount; i++) {
+            long userId = i;
+            executorService.submit(() -> {
+                try {
+                    applyService.applyWithKafka(userId);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        latch.await();
+//        Thread.sleep(10000); 다른 서버에서 저장하는 시간을 기다리기 위해서 실제 테스트에서 이런식으로 작성하면 안됨
+        // then
+        long count = couponRepository.count();
+        assertThat(count).isEqualTo(100);
+    }
+
+    @Test
+    public void 동일한_사용자의_중복_응모() throws InterruptedException {
+        // given
+        int threadCount = 1000;
+        ExecutorService executorService = Executors.newFixedThreadPool(32);
+        CountDownLatch latch = new CountDownLatch(threadCount);
+
+        // when
+        for (int i = 0; i < threadCount; i++) {
+            executorService.submit(() -> {
+                try {
+                    // 동일한 사용자로 계속 요청하기
+                    applyService.applyWithKafkaAndRedisSetForUser(1L);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        latch.await();
+//        Thread.sleep(10000); 다른 서버에서 저장하는 시간을 기다리기 위해서 실제 테스트에서 이런식으로 작성하면 안됨
+        // then
+        long count = couponRepository.count();
+        assertThat(count).isEqualTo(1);
+    }
 
 }
